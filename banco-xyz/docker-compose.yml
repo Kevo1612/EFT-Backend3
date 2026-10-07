@@ -1,0 +1,264 @@
+# =====================================================================
+#  Banco XYZ - Orquestacion completa con Docker Compose
+#
+#  docker compose up -d --build          -> levanta todo
+#  docker compose up -d --scale ms-pagos=3   -> escala horizontalmente un servicio
+#
+#  Puertos expuestos al host:
+#    8080 API Gateway (unico punto de entrada a la aplicacion)
+#    8180 Keycloak (admin / admin)      8761 Eureka      8888 Config Server
+#    8090 Kafka UI     9411 Zipkin     9090 Prometheus   5432 PostgreSQL   29092 Kafka
+#  Los microservicios y BFF NO publican puertos: solo se alcanzan via gateway,
+#  lo que permite tener varias replicas de cada uno.
+# =====================================================================
+
+x-spring-env: &spring-env
+  CONFIG_SERVER_URL: http://config-server:8888
+  EUREKA_URL: http://eureka-server:8761/eureka
+  DB_HOST: postgres
+  DB_USER: banco
+  DB_PASSWORD: ${DB_PASSWORD:-banco123}
+  KAFKA_BOOTSTRAP: kafka:9092
+  KEYCLOAK_JWKS_URI: http://keycloak:8080/realms/banco-xyz/protocol/openid-connect/certs
+  KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/banco-xyz/protocol/openid-connect/token
+  ZIPKIN_URL: http://zipkin:9411/api/v2/spans
+  JAVA_OPTS: "-Xms128m -Xmx384m -XX:+UseG1GC"
+
+x-spring-service: &spring-service
+  restart: on-failure
+  networks: [banco]
+  depends_on:
+    config-server:
+      condition: service_healthy
+    eureka-server:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+    kafka:
+      condition: service_healthy
+    keycloak:
+      condition: service_healthy
+
+x-healthcheck: &spring-healthcheck
+  interval: 15s
+  timeout: 5s
+  retries: 10
+  start_period: 60s
+
+services:
+
+  # ------------------------------------------------------------------ infraestructura
+  postgres:
+    image: postgres:16-alpine
+    container_name: banco-postgres
+    environment:
+      POSTGRES_USER: banco
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-banco123}
+      POSTGRES_DB: banco
+    ports: ["5432:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U banco"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [banco]
+
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: banco-kafka
+    ports: ["29092:29092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller           # modo KRaft (sin Zookeeper)
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_NUM_PARTITIONS: 3
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+    networks: [banco]
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: banco-kafka-ui
+    ports: ["8090:8080"]
+    environment:
+      KAFKA_CLUSTERS_0_NAME: banco-xyz
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks: [banco]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+    container_name: banco-keycloak
+    command: ["start-dev", "--import-realm"]
+    ports: ["8180:8080"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./keycloak/realm-banco-xyz.json:/opt/keycloak/data/import/realm-banco-xyz.json:ro
+    healthcheck:
+      # la imagen de Keycloak no trae curl: se usa /dev/tcp de bash contra el puerto de gestion 9000
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [banco]
+
+  zipkin:
+    image: openzipkin/zipkin:3
+    container_name: banco-zipkin
+    ports: ["9411:9411"]
+    networks: [banco]
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: banco-prometheus
+    ports: ["9090:9090"]
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on: [eureka-server]
+    networks: [banco]
+
+  # ------------------------------------------------------------------ Spring Cloud
+  config-server:
+    build: { context: ., args: { MODULE: config-server } }
+    image: banco-xyz/config-server:1.0.0
+    container_name: banco-config-server
+    ports: ["8888:8888"]
+    environment:
+      JAVA_OPTS: "-Xms64m -Xmx256m"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8888/actuator/health"]
+      <<: *spring-healthcheck
+    networks: [banco]
+
+  eureka-server:
+    build: { context: ., args: { MODULE: eureka-server } }
+    image: banco-xyz/eureka-server:1.0.0
+    container_name: banco-eureka
+    ports: ["8761:8761"]
+    environment:
+      EUREKA_HOSTNAME: eureka-server
+      JAVA_OPTS: "-Xms64m -Xmx256m"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8761/actuator/health"]
+      <<: *spring-healthcheck
+    networks: [banco]
+
+  api-gateway:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: api-gateway } }
+    image: banco-xyz/api-gateway:1.0.0
+    container_name: banco-gateway
+    ports: ["8080:8080"]
+    environment:
+      <<: *spring-env
+      SSL_ENABLED: ${SSL_ENABLED:-false}
+      SSL_KEYSTORE: file:/app/certs/banco-xyz.p12
+    volumes:
+      - ./certs:/app/certs:ro
+
+  # ------------------------------------------------------------------ microservicios
+  ms-clientes:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: ms-clientes } }
+    image: banco-xyz/ms-clientes:1.0.0
+    environment: *spring-env
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8083/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+  ms-cuentas:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: ms-cuentas } }
+    image: banco-xyz/ms-cuentas:1.0.0
+    environment: *spring-env
+    deploy:
+      replicas: 2            # escalado horizontal: 2 instancias detras del balanceador
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+  ms-pagos:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: ms-pagos } }
+    image: banco-xyz/ms-pagos:1.0.0
+    environment: *spring-env
+    deploy:
+      replicas: 2
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+  # ------------------------------------------------------------------ BFF
+  bff-web:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: bff-web } }
+    image: banco-xyz/bff-web:1.0.0
+    environment: *spring-env
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8091/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+  bff-movil:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: bff-movil } }
+    image: banco-xyz/bff-movil:1.0.0
+    environment: *spring-env
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8092/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+  bff-cajero:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: bff-cajero } }
+    image: banco-xyz/bff-cajero:1.0.0
+    environment: *spring-env
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8093/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+  # ------------------------------------------------------------------ batch
+  batch-service:
+    <<: *spring-service
+    build: { context: ., args: { MODULE: batch-service } }
+    image: banco-xyz/batch-service:1.0.0
+    container_name: banco-batch
+    environment:
+      <<: *spring-env
+      BATCH_OUTPUT_DIR: /app/output
+      BATCH_SCHEDULER: "false"
+    volumes:
+      # volumen con nombre: hereda los permisos del usuario "app" de la imagen.
+      # Para copiar los reportes al host:  docker cp banco-batch:/app/output ./output
+      - batch-output:/app/output
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8084/actuator/health/readiness"]
+      <<: *spring-healthcheck
+
+volumes:
+  pgdata:
+  batch-output:
+
+networks:
+  banco:
+    name: banco-net

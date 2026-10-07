@@ -1,0 +1,88 @@
+# =====================================================================
+# Configuracion COMUN a todos los servicios (Spring Cloud Config, perfil native)
+# Cada valor ${VAR:defecto} se puede sobrescribir con variables de entorno
+# (docker-compose / ECS). Los defectos sirven para ejecutar en local.
+# =====================================================================
+
+banco:
+  security:
+    # JWKS de Keycloak: claves publicas para validar la firma de los JWT
+    jwk-set-uri: ${KEYCLOAK_JWKS_URI:http://localhost:8180/realms/banco-xyz/protocol/openid-connect/certs}
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8180/realms/banco-xyz/protocol/openid-connect/token}
+
+server:
+  shutdown: graceful          # termina las peticiones en curso antes de apagar (despliegues sin cortes)
+
+spring:
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all                # el broker confirma solo cuando el mensaje esta replicado
+      retries: 3
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+    consumer:
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.trusted.packages: cl.bancoxyz.common.event
+    listener:
+      concurrency: 2
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            connect-timeout: 2000
+            read-timeout: 4000
+            logger-level: basic
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    registry-fetch-interval-seconds: 5
+  instance:
+    prefer-ip-address: true
+    # id unico por replica -> Eureka distingue N instancias del mismo servicio (escalado horizontal)
+    instance-id: ${spring.application.name}:${random.uuid}
+    lease-renewal-interval-in-seconds: 10
+    lease-expiration-duration-in-seconds: 30
+
+# ---------------------------------------------------------------- Observabilidad
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,circuitbreakers,retries
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true          # /actuator/health/liveness y /readiness (ECS / Kubernetes)
+  health:
+    circuitbreakers:
+      enabled: true
+  tracing:
+    sampling:
+      probability: ${TRACING_PROBABILITY:1.0}
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_URL:http://localhost:9411/api/v2/spans}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+logging:
+  pattern:
+    # traceId/spanId en cada linea: permite seguir una peticion a traves de todos los servicios
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+  level:
+    cl.bancoxyz: INFO

@@ -1,0 +1,58 @@
+spring:
+  cloud:
+    gateway:
+      # Balanceo: "lb://servicio" -> Spring Cloud LoadBalancer reparte (round-robin) entre las
+      # instancias registradas en Eureka. Al escalar un servicio, el gateway lo detecta solo.
+      default-filters:
+        - name: CircuitBreaker
+          args:
+            name: gateway
+            fallbackUri: forward:/fallback
+        - name: Retry
+          args:
+            retries: 2
+            methods: GET
+            statuses: BAD_GATEWAY,SERVICE_UNAVAILABLE
+            backoff:
+              firstBackoff: 100ms
+              maxBackoff: 500ms
+              factor: 2
+              basedOnPreviousValue: false
+        - DedupeResponseHeader=Access-Control-Allow-Origin
+      routes:
+        # ----- Canales (BFF)
+        - id: bff-web
+          uri: lb://bff-web
+          predicates:
+            - Path=/web/**
+        - id: bff-movil
+          uri: lb://bff-movil
+          predicates:
+            - Path=/movil/**
+        - id: bff-cajero
+          uri: lb://bff-cajero
+          predicates:
+            - Path=/cajero/**
+        # ----- Acceso administrativo directo (solo rol ADMIN, ver SecurityConfig)
+        - id: ms-cuentas
+          uri: lb://ms-cuentas
+          predicates:
+            - Path=/api/cuentas/**
+        - id: ms-pagos
+          uri: lb://ms-pagos
+          predicates:
+            - Path=/api/pagos/**
+        - id: ms-clientes
+          uri: lb://ms-clientes
+          predicates:
+            - Path=/api/clientes/**
+        - id: batch-service
+          uri: lb://batch-service
+          predicates:
+            - Path=/api/batch/**
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,gateway

@@ -1,0 +1,21 @@
+server:
+  port: 8092
+  # gzip de respuestas JSON: menos datos moviles
+  compression:
+    enabled: true
+    mime-types: application/json
+    min-response-size: 512
+
+banco:
+  bff:
+    clientes-permitidos: movil-app
+  movil:
+    cache-ttl-min: 30
+
+spring:
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            read-timeout: 3000

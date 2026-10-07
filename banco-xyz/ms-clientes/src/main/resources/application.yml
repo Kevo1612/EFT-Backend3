@@ -1,0 +1,7 @@
+spring:
+  application:
+    name: ms-clientes
+  config:
+    # Toda la configuracion (puerto, BD, Kafka, seguridad) viene del config-server
+    # Obligatorio: sin config-server el servicio no arranca (en Docker se reinicia hasta que este disponible)
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"

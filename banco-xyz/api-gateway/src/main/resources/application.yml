@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: api-gateway
+  config:
+    # Obligatorio: sin config-server el servicio no arranca (en Docker se reinicia hasta que este disponible)
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+server:
+  port: 8080
+  # HTTPS: generar el keystore con scripts/generar-certificados.sh y levantar con SSL_ENABLED=true
+  ssl:
+    enabled: ${SSL_ENABLED:false}
+    key-store: ${SSL_KEYSTORE:file:certs/banco-xyz.p12}
+    key-store-password: ${SSL_KEYSTORE_PASSWORD:changeit}
+    key-store-type: PKCS12
+    key-alias: banco-xyz

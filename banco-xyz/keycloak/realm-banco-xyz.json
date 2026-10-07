@@ -1,0 +1,176 @@
+{
+  "realm": "banco-xyz",
+  "displayName": "Banco XYZ",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 300,
+  "bruteForceProtected": true,
+  "failureFactor": 5,
+  "roles": {
+    "realm": [
+      {
+        "name": "CLIENTE",
+        "description": "Cliente del banco (canales web, movil y cajero)"
+      },
+      {
+        "name": "ADMIN",
+        "description": "Ejecutivo / administrador (backoffice, batch, acceso directo a /api)"
+      },
+      {
+        "name": "SERVICIO",
+        "description": "Microservicio interno (client_credentials). Unico rol que puede mover saldos"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "web-app",
+      "name": "Banca en linea (navegador)",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "attributes": {
+        "access.token.lifespan": "300",
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "bancoxyz://callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ]
+    },
+    {
+      "clientId": "movil-app",
+      "name": "App movil",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "attributes": {
+        "access.token.lifespan": "900",
+        "pkce.code.challenge.method": "S256"
+      },
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "bancoxyz://callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3000"
+      ]
+    },
+    {
+      "clientId": "cajero-app",
+      "name": "Red de cajeros automaticos",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": false,
+      "attributes": {
+        "access.token.lifespan": "120"
+      }
+    },
+    {
+      "clientId": "ms-pagos",
+      "name": "Cuenta de servicio ms-pagos",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ms-pagos-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    },
+    {
+      "clientId": "ms-cuentas",
+      "name": "Cuenta de servicio ms-cuentas",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "ms-cuentas-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false
+    }
+  ],
+  "users": [
+    {
+      "username": "cliente1",
+      "enabled": true,
+      "email": "juan.perez@correo.cl",
+      "emailVerified": true,
+      "firstName": "Juan",
+      "lastName": "Perez",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "cliente123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "CLIENTE"
+      ]
+    },
+    {
+      "username": "cliente2",
+      "enabled": true,
+      "email": "maria.gonzalez@correo.cl",
+      "emailVerified": true,
+      "firstName": "Maria",
+      "lastName": "Gonzalez",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "cliente123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "CLIENTE"
+      ]
+    },
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@bancoxyz.cl",
+      "emailVerified": true,
+      "firstName": "Ana",
+      "lastName": "Administradora",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin123",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN",
+        "CLIENTE"
+      ]
+    },
+    {
+      "username": "service-account-ms-pagos",
+      "enabled": true,
+      "serviceAccountClientId": "ms-pagos",
+      "realmRoles": [
+        "SERVICIO"
+      ]
+    },
+    {
+      "username": "service-account-ms-cuentas",
+      "enabled": true,
+      "serviceAccountClientId": "ms-cuentas",
+      "realmRoles": [
+        "SERVICIO"
+      ]
+    }
+  ]
+}

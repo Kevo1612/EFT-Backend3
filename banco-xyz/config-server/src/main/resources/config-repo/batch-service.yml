@@ -1,0 +1,43 @@
+server:
+  port: 8084
+
+spring:
+  datasource:
+    # reWriteBatchedInserts: el driver agrupa los INSERT del JdbcBatchItemWriter (mucho mas rapido)
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/batch_db?reWriteBatchedInserts=true
+    username: ${DB_USER:banco}
+    password: ${DB_PASSWORD:banco123}
+    hikari:
+      maximum-pool-size: 20
+  batch:
+    job:
+      enabled: false          # los jobs se lanzan via API o scheduler, no al arrancar
+    jdbc:
+      initialize-schema: always
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-banco.sql
+
+banco:
+  batch:
+    input-dir: ${BATCH_INPUT_DIR:classpath:data}
+    output-dir: ${BATCH_OUTPUT_DIR:./output}
+    chunk-size: 100
+    hilos: 4
+    particiones: 4
+    skip-limit: 1000
+    reintentos-job: 2
+    espera-reintento-ms: 10000
+    edad-minima: 18
+    edad-maxima: 99
+    tasas-mensuales:
+      ahorro: 0.0050
+      prestamo: 0.0150
+      hipoteca: 0.0075
+    scheduler:
+      habilitado: ${BATCH_SCHEDULER:false}
+      semana: semana_3
+      cron-transacciones: "0 0 2 * * *"
+      cron-intereses: "0 0 3 1 * *"
+      cron-estados: "0 0 4 1 1 *"

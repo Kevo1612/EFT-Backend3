@@ -1,0 +1,8 @@
+target/
+.idea/
+*.iml
+.vscode/
+output/
+certs/
+*.log
+.env

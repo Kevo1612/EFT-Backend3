@@ -1,0 +1,34 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/cuentas_db
+    username: ${DB_USER:banco}
+    password: ${DB_PASSWORD:banco123}
+    hikari:
+      maximum-pool-size: 15
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+  security:
+    oauth2:
+      client:
+        # identidad propia de ms-cuentas (client_credentials) para llamar a ms-clientes
+        registration:
+          keycloak:
+            client-id: ms-cuentas
+            client-secret: ${MS_CUENTAS_SECRET:ms-cuentas-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${banco.security.token-uri}
+
+banco:
+  cuentas:
+    validacion-pendientes-ms: 60000

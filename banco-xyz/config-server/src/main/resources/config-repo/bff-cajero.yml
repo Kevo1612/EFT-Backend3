@@ -1,0 +1,25 @@
+server:
+  port: 8093
+
+banco:
+  bff:
+    clientes-permitidos: cajero-app
+  cajero:
+    terminales-autorizados: ATM-001,ATM-002,ATM-003
+    monto-minimo: 5000
+    monto-maximo: 500000
+    multiplo: 5000
+
+spring:
+  cloud:
+    openfeign:
+      client:
+        config:
+          default:
+            # el cajero no puede esperar: respuesta rapida o error controlado
+            connect-timeout: 1000
+            read-timeout: 3000
+
+logging:
+  level:
+    AUDITORIA_CAJERO: INFO

@@ -1,0 +1,10 @@
+spring:
+  application:
+    name: ms-pagos
+  config:
+    # Obligatorio: sin config-server el servicio no arranca (en Docker se reinicia hasta que este disponible)
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  cloud:
+    config:
+      # ademas de <servicio>.yml y application.yml, carga la configuracion compartida resiliencia.yml
+      name: ${spring.application.name},resiliencia

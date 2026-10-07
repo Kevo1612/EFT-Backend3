@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: batch-service
+  config:
+    # Obligatorio: sin config-server el servicio no arranca (en Docker se reinicia hasta que este disponible)
+    import: "configserver:${CONFIG_SERVER_URL:http://localhost:8888}"

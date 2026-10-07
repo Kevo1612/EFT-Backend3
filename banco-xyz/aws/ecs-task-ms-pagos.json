@@ -1,0 +1,49 @@
+{
+  "family": "banco-ms-pagos",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/bancoTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "ms-pagos",
+      "image": "<ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/banco-xyz/ms-pagos:1.0.0",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8082, "protocol": "tcp" }],
+      "environment": [
+        { "name": "CONFIG_SERVER_URL", "value": "http://config-server.banco.local:8888" },
+        { "name": "EUREKA_URL", "value": "http://eureka-server.banco.local:8761/eureka" },
+        { "name": "DB_HOST", "value": "<RDS_ENDPOINT>" },
+        { "name": "DB_USER", "value": "banco" },
+        { "name": "KAFKA_BOOTSTRAP", "value": "<MSK_BOOTSTRAP_BROKERS>" },
+        { "name": "KEYCLOAK_JWKS_URI", "value": "http://keycloak.banco.local:8080/realms/banco-xyz/protocol/openid-connect/certs" },
+        { "name": "KEYCLOAK_TOKEN_URI", "value": "http://keycloak.banco.local:8080/realms/banco-xyz/protocol/openid-connect/token" },
+        { "name": "ZIPKIN_URL", "value": "http://zipkin.banco.local:9411/api/v2/spans" },
+        { "name": "TRACING_PROBABILITY", "value": "0.2" },
+        { "name": "JAVA_OPTS", "value": "-XX:MaxRAMPercentage=75 -XX:+UseG1GC" }
+      ],
+      "secrets": [
+        { "name": "DB_PASSWORD", "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:banco/db-password" },
+        { "name": "MS_PAGOS_SECRET", "valueFrom": "arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:banco/ms-pagos-client-secret" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -fs http://localhost:8082/actuator/health/liveness || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 90
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/banco-xyz",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ms-pagos",
+          "awslogs-create-group": "true"
+        }
+      }
+    }
+  ]
+}

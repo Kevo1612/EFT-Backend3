@@ -1,0 +1,21 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    # "native" lee los archivos desde el classpath (carpeta config-repo).
+    # En produccion se puede cambiar a "git" apuntando a un repositorio de configuracion.
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: ${CONFIG_LOCATIONS:classpath:/config-repo}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

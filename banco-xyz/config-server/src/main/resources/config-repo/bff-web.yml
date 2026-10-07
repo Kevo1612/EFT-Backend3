@@ -1,0 +1,8 @@
+server:
+  port: 8091
+
+banco:
+  bff:
+    clientes-permitidos: web-app
+    cors-origins: ${WEB_ORIGINS:http://localhost:3000}
+    hilos: 16
